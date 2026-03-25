@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import districts, constituencies, candidates, ranking
 
+
 app = FastAPI(
     title="Know Your Candidate API",
     description="Kerala Election Decision Support System — explore, compare, and rank candidates dynamically.",
