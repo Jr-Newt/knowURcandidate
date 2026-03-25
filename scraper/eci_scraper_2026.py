@@ -19,7 +19,7 @@ from playwright.async_api import async_playwright
 
 BASE_URL = "https://affidavit.eci.gov.in"
 OUTPUT_DIR = Path(__file__).parent / "output"
-RATE_LIMIT = (1.0, 2.0)
+RATE_LIMIT = (0.3, 0.7)  # Reduced wait time to speed up 3500+ requests
 
 
 def parse_number(text: str) -> int:
@@ -128,158 +128,188 @@ async def scrape_kerala_2026():
         await page.wait_for_timeout(5000)  # Wait for full results to render
         await page.wait_for_load_state("networkidle")
 
-        # ── Step 3: Get the full page HTML and parse candidates ───────
-        print("4. Parsing candidate list...")
-        content = await page.content()
-
-        # Save the raw HTML for debugging
-        with open(OUTPUT_DIR / "kerala_2026_raw.html", "w", encoding="utf-8") as f:
-            f.write(content)
-
-        # Parse candidate cards from the listing page
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(content, "html.parser")
-
-        # Find all "View more" links which point to profile pages
-        view_more_links = soup.find_all("a", href=re.compile(r"show-profile"))
-        print(f"   Found {len(view_more_links)} 'View more' links")
-
-        # Extract basic info from each candidate card
+        # ── Step 3: Loop through pagination and parse all candidates ───────
+        print("4. Parsing candidate list across all pages...")
         candidates_basic = []
-        for link in view_more_links:
-            href = link.get("href", "")
-            if not href.startswith("http"):
-                href = BASE_URL + ("" if href.startswith("/") else "/") + href
+        page_num = 1
+        
+        from bs4 import BeautifulSoup
+        
+        while True:
+            print(f"   Parsing page {page_num}...")
+            content = await page.content()
+            soup = BeautifulSoup(content, "html.parser")
 
-            # Walk up the DOM to find the card container
-            container = link
-            for _ in range(10):
-                container = container.parent
-                if container is None:
-                    break
-                text = container.get_text(" ", strip=True)
-                if "Party" in text and "Constituency" in text:
-                    break
+            # Find all "View more" links which point to profile pages
+            view_more_links = soup.find_all("a", href=re.compile(r"show-profile"))
+            print(f"   Found {len(view_more_links)} 'View more' links on page {page_num}")
 
-            card_text = container.get_text(" ", strip=True) if container else ""
+            # Extract basic info from each candidate card
+            for link in view_more_links:
+                href = link.get("href", "")
+                if not href.startswith("http"):
+                    href = BASE_URL + ("" if href.startswith("/") else "/") + href
 
-            info = {"profile_url": href}
-
-            # Extract from card text
-            name_match = None
-            # Try heading tags first
-            if container:
-                for tag in container.find_all(["h4", "h5", "h6", "strong"]):
-                    t = tag.get_text(strip=True)
-                    if t and len(t) > 2 and "Party" not in t and "View" not in t:
-                        info["name"] = t
+                # Walk up the DOM to find the card container
+                container = link
+                for _ in range(10):
+                    container = container.parent
+                    if container is None:
+                        break
+                    text = container.get_text(" ", strip=True)
+                    if "Party" in text and "Constituency" in text:
                         break
 
-            party_m = re.search(r"Party\s*:\s*(.+?)(?:\s*(?:Status|State|Constit)\b)", card_text)
-            if party_m:
-                info["party"] = party_m.group(1).strip()
+                card_text = container.get_text(" ", strip=True) if container else ""
+                info = {"profile_url": href}
 
-            status_m = re.search(r"Status\s*:\s*(\w+)", card_text)
-            if status_m:
-                info["status"] = status_m.group(1).strip()
+                # Extract from card text
+                if container:
+                    for tag in container.find_all(["h4", "h5", "h6", "strong"]):
+                        t = tag.get_text(strip=True)
+                        if t and len(t) > 2 and "Party" not in t and "View" not in t:
+                            info["name"] = t
+                            break
 
-            const_m = re.search(r"Constituency\s*:\s*(.+?)(?:\s*(?:Party|Status|State|View)\b|$)", card_text)
-            if const_m:
-                info["constituency"] = const_m.group(1).strip()
+                party_m = re.search(r"Party\s*:\s*(.+?)(?:\s*(?:Status|State|Constit)\b)", card_text)
+                if party_m:
+                    info["party"] = party_m.group(1).strip()
 
-            candidates_basic.append(info)
+                status_m = re.search(r"Status\s*:\s*(\w+)", card_text)
+                if status_m:
+                    info["status"] = status_m.group(1).strip()
 
-        print(f"   Extracted basic info for {len(candidates_basic)} candidates")
+                const_m = re.search(r"Constituency\s*:\s*(.+?)(?:\s*(?:Party|Status|State|View)\b|$)", card_text)
+                if const_m:
+                    info["constituency"] = const_m.group(1).strip()
+
+                candidates_basic.append(info)
+                
+            # Try to click the "Next" button
+            try:
+                # ECI uses tailwind pagination: Next »
+                # It might have rel="next" or literal text "Next"
+                next_btns = page.locator("a:has-text('Next')")
+                count = await next_btns.count()
+                
+                clicked = False
+                for i in range(count):
+                    try:
+                        btn = next_btns.nth(i)
+                        href = await btn.get_attribute("href")
+                        if btn and await btn.is_visible() and href and "page=" in href:
+                            print("   Clicking Next page...")
+                            await btn.click(force=True)
+                            await page.wait_for_timeout(4000)
+                            await page.wait_for_load_state("networkidle")
+                            page_num += 1
+                            clicked = True
+                            break
+                    except:
+                        pass
+                
+                if not clicked:
+                    # Alternative JS fallback
+                    next_url = await page.evaluate("document.querySelector('a[rel=\"next\"]')?.href || document.evaluate('//a[contains(text(),\"Next\")]', document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue?.href")
+                    if next_url:
+                        print(f"   Navigating via JS to: {next_url}")
+                        await page.goto(next_url, wait_until="networkidle", timeout=30000)
+                        await page.wait_for_timeout(3000)
+                        page_num += 1
+                    else:
+                        print(f"   End of pagination reached at page {page_num}.")
+                        break
+            except Exception as e:
+                print(f"   Pagination stopped: {e}")
+                break
+
+        print(f"\n   Extracted basic info for a total of {len(candidates_basic)} candidate listings")
 
         # Filter to only "Contesting" candidates (skip Withdrawn/Rejected)
         contesting = [c for c in candidates_basic if c.get("status", "").lower() in ("accepted", "contesting", "")]
         print(f"   Contesting/Accepted candidates: {len(contesting)}")
 
-        # ── Step 4: Visit each candidate's profile for details ────────
-        print(f"\n5. Fetching detailed profiles...")
-        for i, candidate in enumerate(contesting):
+        # ── Step 4: Visit each candidate's profile for details (Concurrent) ────────
+        print(f"\n5. Fetching detailed profiles concurrently for {len(contesting)} candidates...")
+        
+        # Deduplicate candidates using profile_url
+        unique_contesting = {}
+        for c in contesting:
+            if c["profile_url"] not in unique_contesting:
+                unique_contesting[c["profile_url"]] = c
+        contesting = list(unique_contesting.values())
+        print(f"   Unique candidates to fetch: {len(contesting)}")
+
+        semaphore = asyncio.Semaphore(5)  # 5 concurrent requests
+        state = {"completed_count": 0}
+
+        async def fetch_profile(candidate, context):
             url = candidate.get("profile_url", "")
             if not url:
-                continue
+                return candidate
 
-            name = candidate.get("name", "Unknown")
-            print(f"   [{i+1}/{len(contesting)}] {name}...", end=" ", flush=True)
+            async with semaphore:
+                try:
+                    # Create a new page for concurrent fetching
+                    p = await context.new_page()
+                    # Stealth
+                    await p.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+                    
+                    await p.goto(url, wait_until="domcontentloaded", timeout=45000)
+                    profile_html = await p.content()
+                    await p.close()
 
-            try:
-                await page.goto(url, wait_until="networkidle", timeout=30000)
-                await page.wait_for_timeout(1000)
+                    from bs4 import BeautifulSoup
+                    profile_soup = BeautifulSoup(profile_html, "html.parser")
+                    profile_text = profile_soup.get_text(" ", strip=True)
 
-                profile_html = await page.content()
-                profile_soup = BeautifulSoup(profile_html, "html.parser")
-                profile_text = profile_soup.get_text(" ", strip=True)
+                    details = {}
+                    import json
+                    
+                    age_m = re.search(r"Age\s*[:]\s*(\d+)", profile_text, re.IGNORECASE)
+                    if age_m: details["age"] = int(age_m.group(1))
 
-                # Extract detailed fields
-                # Look for label-value pairs in the profile
-                details = {}
+                    edu_m = re.search(r"Education\s*[:]\s*(.+?)(?:\s*(?:Profession|Self|Criminal|Total|Address)\b)", profile_text, re.IGNORECASE)
+                    if edu_m: details["education"] = edu_m.group(1).strip()
 
-                # Age
-                age_m = re.search(r"Age\s*[:]\s*(\d+)", profile_text, re.IGNORECASE)
-                if age_m:
-                    details["age"] = int(age_m.group(1))
+                    prof_m = re.search(r"(?:Self\s*)?Profession\s*[:]\s*(.+?)(?:\s*(?:Criminal|Total|Education|Address|Age)\b)", profile_text, re.IGNORECASE)
+                    if prof_m: details["profession"] = prof_m.group(1).strip()
 
-                # Education
-                edu_m = re.search(r"Education\s*[:]\s*(.+?)(?:\s*(?:Profession|Self|Criminal|Total|Address)\b)", profile_text, re.IGNORECASE)
-                if edu_m:
-                    details["education"] = edu_m.group(1).strip()
+                    crim_m = re.search(r"Criminal\s*Cases?\s*[:]\s*(\d+)", profile_text, re.IGNORECASE)
+                    if crim_m: details["criminal_cases"] = int(crim_m.group(1))
+                    elif re.search(r"no\s*criminal", profile_text, re.IGNORECASE): details["criminal_cases"] = 0
 
-                # Profession / Self Profession
-                prof_m = re.search(r"(?:Self\s*)?Profession\s*[:]\s*(.+?)(?:\s*(?:Criminal|Total|Education|Address|Age)\b)", profile_text, re.IGNORECASE)
-                if prof_m:
-                    details["profession"] = prof_m.group(1).strip()
+                    serious_m = re.search(r"Serious\s*(?:Criminal\s*)?Cases?\s*[:]\s*(\d+)", profile_text, re.IGNORECASE)
+                    if serious_m: details["serious_cases"] = int(serious_m.group(1))
 
-                # Criminal cases
-                crim_m = re.search(r"Criminal\s*Cases?\s*[:]\s*(\d+)", profile_text, re.IGNORECASE)
-                if crim_m:
-                    details["criminal_cases"] = int(crim_m.group(1))
-                else:
-                    # Check for IPC sections or "No" criminal cases
-                    if re.search(r"no\s*criminal", profile_text, re.IGNORECASE):
-                        details["criminal_cases"] = 0
+                    assets_m = re.search(r"Total\s*Assets?\s*[:]\s*(?:Rs\.?\s*)?([0-9,]+)", profile_text, re.IGNORECASE)
+                    if assets_m: details["assets"] = parse_number(assets_m.group(1))
 
-                # Serious IPC cases
-                serious_m = re.search(r"Serious\s*(?:Criminal\s*)?Cases?\s*[:]\s*(\d+)", profile_text, re.IGNORECASE)
-                if serious_m:
-                    details["serious_cases"] = int(serious_m.group(1))
+                    liab_m = re.search(r"Total\s*Liabilit(?:y|ies)\s*[:]\s*(?:Rs\.?\s*)?([0-9,]+)", profile_text, re.IGNORECASE)
+                    if liab_m: details["liabilities"] = parse_number(liab_m.group(1))
 
-                # Total Assets
-                assets_m = re.search(r"Total\s*Assets?\s*[:]\s*(?:Rs\.?\s*)?([0-9,]+)", profile_text, re.IGNORECASE)
-                if assets_m:
-                    details["assets"] = parse_number(assets_m.group(1))
+                    gender_m = re.search(r"Gender\s*[:]\s*(\w+)", profile_text, re.IGNORECASE)
+                    if gender_m: details["gender"] = gender_m.group(1).strip()
 
-                # Total Liabilities
-                liab_m = re.search(r"Total\s*Liabilit(?:y|ies)\s*[:]\s*(?:Rs\.?\s*)?([0-9,]+)", profile_text, re.IGNORECASE)
-                if liab_m:
-                    details["liabilities"] = parse_number(liab_m.group(1))
+                    candidate.update(details)
+                    candidate["affidavit_link"] = url
+                    
+                    state["completed_count"] += 1
+                    if state["completed_count"] % 100 == 0:
+                        print(f"   ✓ {state['completed_count']}/{len(contesting)} profiles fetched...")
+                        
+                except Exception as e:
+                    print(f"✗ Failed {candidate.get('name')}: {e}")
+            
+            return candidate
 
-                # Gender
-                gender_m = re.search(r"Gender\s*[:]\s*(\w+)", profile_text, re.IGNORECASE)
-                if gender_m:
-                    details["gender"] = gender_m.group(1).strip()
+        # Run concurrent fetches
+        tasks = [fetch_profile(c, context) for c in contesting]
+        all_candidates = await asyncio.gather(*tasks)
 
-                candidate.update(details)
-                candidate["affidavit_link"] = url
-
-                print(f"✓", flush=True)
-
-            except Exception as e:
-                print(f"✗ ({e})", flush=True)
-
-            # Rate limiting
-            await asyncio.sleep(random.uniform(*RATE_LIMIT))
-
-            # Save progress every 100 candidates
-            if (i + 1) % 100 == 0:
-                progress_file = OUTPUT_DIR / "candidates_2026_progress.json"
-                with open(progress_file, "w", encoding="utf-8") as f:
-                    json.dump(contesting[:i+1], f, indent=2, ensure_ascii=False)
-                print(f"   --- Progress saved ({i+1}/{len(contesting)}) ---")
-
-        all_candidates = contesting
+        # Save progress back out
+        with open(OUTPUT_DIR / "candidates_2026_progress.json", "w", encoding="utf-8") as f:
+             json.dump(all_candidates, f, indent=2, ensure_ascii=False)
         await browser.close()
 
     # ── Step 6: Save final output ─────────────────────────────────────
@@ -297,6 +327,13 @@ async def scrape_kerala_2026():
     print("\nParty breakdown:")
     for party, count in sorted(parties.items(), key=lambda x: -x[1])[:10]:
         print(f"  {party}: {count}")
+
+    print("\n6. Loading data into Supabase...")
+    import subprocess
+    try:
+        subprocess.run(["python", "load_supabase.py"], check=True)
+    except Exception as e:
+        print(f"Failed to load into Supabase: {e}")
 
     return all_candidates
 
