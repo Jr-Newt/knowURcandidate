@@ -1,0 +1,117 @@
+{
+  "districts": [
+    {
+      "name": "Thiruvananthapuram",
+      "constituencies": [
+        "Parassala", "Kovalam", "Neyyattinkara", "Vamanapuram",
+        "Attingal", "Aruvikkara", "Nedumangad", "Vattiyoorkavu",
+        "Thiruvananthapuram", "Nemom", "Kazhakkoottam"
+      ]
+    },
+    {
+      "name": "Kollam",
+      "constituencies": [
+        "Chadayamangalam", "Kundara", "Kollam", "Eravipuram",
+        "Chathannoor", "Punalur", "Kunnathur", "Kottarakkara",
+        "Pathanapuram", "Karunagappally"
+      ]
+    },
+    {
+      "name": "Pathanamthitta",
+      "constituencies": [
+        "Thiruvalla", "Ranni", "Aranmula", "Konni",
+        "Adoor"
+      ]
+    },
+    {
+      "name": "Alappuzha",
+      "constituencies": [
+        "Kayamkulam", "Mavelikkara", "Chengannur",
+        "Alappuzha", "Ambalapuzha", "Haripad",
+        "Kuttanad", "Aroor", "Cherthala"
+      ]
+    },
+    {
+      "name": "Kottayam",
+      "constituencies": [
+        "Changanassery", "Kottayam", "Puthuppally",
+        "Pala", "Kaduthuruthy", "Ettumanoor"
+      ]
+    },
+    {
+      "name": "Idukki",
+      "constituencies": [
+        "Thodupuzha", "Idukki", "Devikulam",
+        "Udumbanchola", "Peerumedu"
+      ]
+    },
+    {
+      "name": "Ernakulam",
+      "constituencies": [
+        "Perumbavoor", "Angamaly", "Aluva", "Kalamassery",
+        "Paravur", "Vypeen", "Kochi", "Thrippunithura",
+        "Ernakulam", "Thrikkakara", "Kunnathunad",
+        "Piravom", "Muvattupuzha", "Kothamangalam"
+      ]
+    },
+    {
+      "name": "Thrissur",
+      "constituencies": [
+        "Thrissur", "Nattika", "Kaipamangalam",
+        "Irinjalakuda", "Puthukkad", "Chalakudy",
+        "Kodungallur", "Kunnamkulam", "Guruvayoor",
+        "Manalur", "Wadakkanchery", "Ollur"
+      ]
+    },
+    {
+      "name": "Palakkad",
+      "constituencies": [
+        "Chittur", "Palakkad", "Tarur", "Shornur",
+        "Ottapalam", "Kongad", "Mannarkkad",
+        "Malampuzha", "Pattambi", "Thrithala",
+        "Alathur", "Nenmara"
+      ]
+    },
+    {
+      "name": "Malappuram",
+      "constituencies": [
+        "Manjeri", "Perinthalmanna", "Mankada",
+        "Malappuram", "Vengara", "Vallikkunnu",
+        "Tirurangadi", "Tanur", "Tirur",
+        "Kottakkal", "Thavanur", "Ponnani",
+        "Kondotty", "Nilambur", "Wandoor"
+      ]
+    },
+    {
+      "name": "Kozhikode",
+      "constituencies": [
+        "Kozhikode North", "Kozhikode South", "Beypore",
+        "Elathur", "Kunnamangalam", "Koduvally",
+        "Balussery", "Koyilandy", "Perambra",
+        "Thiruvambady"
+      ]
+    },
+    {
+      "name": "Wayanad",
+      "constituencies": [
+        "Mananthavady", "Sulthanbathery", "Kalpetta"
+      ]
+    },
+    {
+      "name": "Kannur",
+      "constituencies": [
+        "Kannur", "Dharmadam", "Thalassery",
+        "Kuthuparamba", "Mattannur", "Peravoor",
+        "Taliparamba", "Irikkur", "Azhikode",
+        "Payyannur", "Kalliasseri"
+      ]
+    },
+    {
+      "name": "Kasaragod",
+      "constituencies": [
+        "Manjeshwar", "Kasaragod", "Udma",
+        "Kanhangad", "Thrikkaripur"
+      ]
+    }
+  ]
+}
